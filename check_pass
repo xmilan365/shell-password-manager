@@ -1,0 +1,67 @@
+#!/bin/bash
+
+####################################################################################################
+# Script name:        check_pass
+# Description:        "script that checks the password from dtb based on service"
+# Arguments:          -s -u -p -h
+# Author:             xmilan365
+####################################################################################################
+
+source config.sh
+
+usage () {
+# display usage of the script
+        echo "-------------------------------------------------------------------------"
+        echo -e "\nNAME\n\tcheck_pass - Quickly check the info from password table"
+        echo -e "\nSYNOPSIS\n\tcheck_pass [OPTION]... [SERVICE]... [USERNAME]... [PASSWORD]"
+        echo -e "\n\tNOTE: For argument select appropriate getopt option"
+        echo -e "\nDESCRIPTION\n\t-h\tdisplay this help and exit\n\t-s\tchecking record based on service name\n\t-u\tchecking record based on username\n\t-p\tchecking record based on password"
+        echo -e "\nAUTHOR\n\tWritten by xMilan365"
+        echo "-------------------------------------------------------------------------"
+        exit 1
+}
+
+
+check_record () {
+#check records from database table
+        docker exec -it oracle bash -c "
+            source /home/oracle/.bashrc
+            printf '%s\n' \\ \"
+            select * from passwords where service = '${OPTARG}' or login_name = '${OPTARG}' or password = '${OPTARG}';\" | sqlplus -s ${oracle_username}/${oracle_password}@ORCLCDB | sed 's/-//g' | sed 's/TIMESTAMP//g' | sed 's/SERVICE//g' | sed 's/LOGIN_NAME//g' | sed 's/PASSWORD//g' | sed '/^$/d'"
+}
+
+# MAIN LOGIC ######################################################################################
+
+
+# check if all arguments are set if no display usage
+
+if [[ $# -lt 1  ]]; then
+        echo "Error: Incorrect number of arguments"
+        usage
+        exit 1
+fi       
+
+while getopts "s:u:p:h" OPTION; do
+        case ${OPTION} in
+                s)
+                        echo -e "Checking record based on service name:\n"
+			check_record
+			echo
+                        ;;
+                u)
+                        echo -e "Checking record based on username:\n"
+                        check_record
+			echo
+			;;
+                p)
+                        echo -e "Checking record based on password:\n"
+                        check_record
+			echo
+			;;
+                ?)
+                        usage
+                        ;;
+        esac
+done
+
+exit 0

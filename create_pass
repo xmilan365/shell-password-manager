@@ -1,0 +1,137 @@
+#!/bin/bash
+
+####################################################################################################
+# Script name:        create_pass 
+# Description:        "Create unique password, save it to dtb, send it to mail"
+# Arguments:          -l -u -n -s <lenght>
+# Author:             xmilan365
+####################################################################################################
+
+# MAIN VARIABLIES #################################################################################
+PASS_LENGHT=12
+timestamp="$(date +%s)"
+source config.sh
+# FUNCTIONS #######################################################################################
+
+usage () {
+# display usage of the script
+	echo "-------------------------------------------------------------------------"
+	echo -e "\nNAME\n\tcreate_pass - Create unique password and save it to dtb"
+	echo -e "\nSYNOPSIS\n\tcreate_pass [OPTION]... [LENGHT]"
+	echo -e "\n\tNOTE: Lenght argument is optional, other are mandatory"
+	echo -e "\nDESCRIPTION\n\t-h, --help \t display this help and exit\n\t-l, --lowercase  include lowercase characters in the password\n\t-u, --uppercase  include uppercase characters in the password\n\t-n, --number \t include uppercase characters in the password\n\t-s, --symbol \t include spesific symbols in the password\n\t-d, --dlzka \t specify lenght of the password, defaulty set to 12"
+	echo -e "\nAUTHOR\n\tWritten by xMilan365"
+	echo "-------------------------------------------------------------------------"
+	exit 1
+}
+
+banner () {
+# display password in nice banner
+	RED='\033[0;31m'
+        NC='\033[0m'
+	
+	echo -e "${RED}${line}${NC}"
+	echo -e "SERVICE:  ${RED}${service}${NC}"
+	echo -e "USERNAME: ${RED}${user_name}${NC}"
+	echo -e "PASSWORD: ${RED}${PASSWORD}${NC}"
+	echo -e "${RED}${line}${NC}"
+}
+
+insert_record () {
+#insert records into database table
+        docker exec -it oracle bash -c "
+            source /home/oracle/.bashrc
+            printf '%s\n' \\ \"
+            insert into passwords (timestamp, service, login_name, password)
+                values ('${timestamp}','${service}', '${user_name}', '${PASSWORD}');\" | sqlplus -s ${oracle_username}/${oracle_password}@ORCLCDB" 1>/dev/null 2>&1
+}
+
+send_mail () {
+# sending mail to gmail account
+	echo -e "New password was created: \n\nSERVICE: ${service}\nUSERNAME: ${user_name}\nPASSWORD: ${PASSWORD}" | mailx -s "${service}" ${my_gmail}
+}
+
+# MAIN LOGIC ######################################################################################
+
+# check if all arguments are set if no display usage
+
+if [[ $# -lt 1  ]]; then
+	echo "Error: Incorrect number of arguments"
+	usage
+	exit 1
+fi       
+
+# Ask for a service and user name
+
+read -p "Service: " service
+read -p "Username: " user_name
+
+if [[ -z "$service" ]]; then
+	service="No Service"
+fi
+
+if [[ -z "$user_name" ]]; then
+	user_name="No Username"
+fi
+
+# Check parameters
+
+PASSWORD=""
+lowercase=""
+uppercase=""
+symbol=""
+number=""
+
+while getopts "lunshd:" OPTION; do
+	case ${OPTION} in
+		l)
+			lowercase="$(echo {a..z} | tr ' ' "\n" | shuf | xargs)"
+			echo "Lowercase characters included"
+			;;
+		u)
+			uppercase="$(echo {A..Z} | tr ' ' "\n" | shuf | xargs)"
+			echo "Uppercase characters included"
+			;;
+		s)
+			symbol="$(echo '! @ # % ^ * ( ) _ + = - [ ] { } " < > . / ?' | tr ' ' "\n" | shuf | xargs 2>/dev/null)" 
+			echo "Special symbols included"
+			;;
+		n)
+			number="$(echo {0..9} {0..9} | tr ' ' "\n" | shuf | xargs)"
+			echo "Number included"
+			;;
+		d)
+			PASS_LENGHT="${OPTARG}"
+			echo "Leght of password is ${OPTARG}"
+			;;
+		?)
+			usage
+			;;
+	esac
+done
+
+# generate password based on parameters
+
+PASSWORD="$(echo ${lowercase} ${uppercase} ${symbol} ${number} | tr ' ' "\n"  | shuf | xargs | tr -d ' ' |  head -c ${PASS_LENGHT})"
+
+# display the password
+
+echo 
+banner ${PASS_LENGHT}
+echo
+
+# insert into dtb table
+
+insert_record
+
+# send it to mail
+read -p "Send to mail? [Y/N] " mail_prompt
+
+if [[ $mail_prompt = [Yy] ]]; then 
+	send_mail
+	echo "Mail sent."
+fi
+
+# if script finish, finish in status 0
+
+exit 0
